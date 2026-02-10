@@ -5,6 +5,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from fastapi.responses import FileResponse
+import os
+import json
 
 app = FastAPI()
 
@@ -20,12 +22,26 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# ============ GOOGLE SHEET (LAZY LOAD) ============
+# ============ GOOGLE SHEET (FREE RENDER SAFE) ============
 def get_sheet():
-    creds = Credentials.from_service_account_file(
-        "service_account.json",
+    """
+    Loads Google Service Account credentials from
+    environment variable: GOOGLE_SERVICE_ACCOUNT_JSON
+    """
+    service_account_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+
+    if not service_account_json:
+        raise RuntimeError(
+            "GOOGLE_SERVICE_ACCOUNT_JSON environment variable not set"
+        )
+
+    creds_dict = json.loads(service_account_json)
+
+    creds = Credentials.from_service_account_info(
+        creds_dict,
         scopes=SCOPES
     )
+
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(SPREADSHEET_ID)
     return spreadsheet.worksheet(SHEET_NAME)
