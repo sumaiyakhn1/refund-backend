@@ -114,7 +114,7 @@ def login(data: LoginRequest):
 
     # ===== STUDENT LOGIN (UNCHANGED) =====
     df = get_students_from_excel()
-
+ 
   
 
     # Clean data: ensure strings and strip whitespace
