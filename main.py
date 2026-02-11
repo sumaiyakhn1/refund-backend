@@ -13,7 +13,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,11 +37,18 @@ SCOPES = [
 ]
 
 # ================= GOOGLE SHEET =================
+import json
+
 def get_sheet():
-    creds = Credentials.from_service_account_file(
-        os.path.join(BASE_DIR, "service_account.json"),
+    service_account_info = json.loads(
+        os.environ["GOOGLE_SERVICE_ACCOUNT"]
+    )
+
+    creds = Credentials.from_service_account_info(
+        service_account_info,
         scopes=SCOPES
     )
+
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(SPREADSHEET_ID)
     return spreadsheet.worksheet(SHEET_NAME)
@@ -108,8 +115,7 @@ def login(data: LoginRequest):
     # ===== STUDENT LOGIN (UNCHANGED) =====
     df = get_students_from_excel()
 
-    # ===== STUDENT LOGIN (UNCHANGED) =====
-    df = get_students_from_excel()
+  
 
     # Clean data: ensure strings and strip whitespace
     df["id"] = df["id"].astype(str).str.strip()
