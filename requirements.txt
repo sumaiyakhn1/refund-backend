@@ -4,3 +4,5 @@ gspread
 google-auth
 pandas
 openpyxl
+google-auth-oauthlib
+google-auth-httplib2
