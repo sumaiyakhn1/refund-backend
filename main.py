@@ -67,6 +67,8 @@ class StudentData(BaseModel):
     account_holder: str | None = None
     fee_cleared: str | None = None
     library_cleared: str | None = None
+    scholarship_cleared: str | None = None
+    registration_cleared: str | None = None
     status: str | None = None
 
 # ================= HELPERS =================
@@ -179,11 +181,13 @@ def create_or_update_student(data: StudentData):
         data.account_holder,
         data.fee_cleared,
         data.library_cleared,
+        data.scholarship_cleared,
+        data.registration_cleared,
         data.status
     ]
 
     if row_number:
-        sheet.update(f"A{row_number}:J{row_number}", [row])
+        sheet.update(f"A{row_number}:L{row_number}", [row])
         return {"message": "Student updated"}
     else:
         sheet.append_row(row)
