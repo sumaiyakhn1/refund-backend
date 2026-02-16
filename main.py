@@ -31,7 +31,7 @@ ADMIN_ROLES = {
 
 # ================= PATH CONFIG =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STUDENT_LOGIN_FILE = os.path.join(BASE_DIR, "student_login.xlsx")
+STUDENT_LOGIN_FILE = os.path.join(BASE_DIR, "5_6075497004178349834.xlsx")
 
 # ================= GOOGLE SHEET CONFIG =================
 SPREADSHEET_ID = "14iL5gSZTbBYx2yYm8olZ1ICfJLu2UolGEkFLny3kdtQ"
@@ -63,6 +63,7 @@ def get_sheet():
 class LoginRequest(BaseModel):
     id: str
     password: str
+    course: str | None = None  # Optional for admin, required for student
 
 class StudentData(BaseModel):
     student_id: str
@@ -78,27 +79,86 @@ class StudentData(BaseModel):
     status: str | None = None
 
 # ================= HELPERS =================
-def get_students_from_excel():
+# Global Cache: Maps sheet_name -> DataFrame
+CACHED_DFS = {} 
+LAST_MTIME = 0
+
+def get_students_from_excel(sheet_name="Sheet1"):
+    global CACHED_DFS, LAST_MTIME
+    
     try:
-        # Read Excel without forcing all columns to string immediately.
-        # This allows pandas to respect Excel's native Date format for the 'dob' column.
-        df = pd.read_excel(STUDENT_LOGIN_FILE)
+        # Check file modification time
+        if not os.path.exists(STUDENT_LOGIN_FILE):
+             raise HTTPException(status_code=500, detail="Student login file not found")
+             
+        current_mtime = os.path.getmtime(STUDENT_LOGIN_FILE)
         
-        # Ensure 'id' is treated as a string (handles numeric IDs like 123 -> "123")
-        if 'id' in df.columns:
-            df['id'] = df['id'].astype(str).str.strip()
+        # Reload if file changed or sheet not in cache
+        # If file changed, we might want to clear entire cache? 
+        # Yes, good practice to invalidate all if underlying file changed.
+        if current_mtime > LAST_MTIME:
+            print(f"File changed. Clearing cache. (Modified: {datetime.fromtimestamp(current_mtime)})")
+            CACHED_DFS = {}
+            LAST_MTIME = current_mtime
             
-        # Robust Date Parsing:
-        # 1. Native Date objects (from Excel) -> Converted to Timestamp
-        # 2. Text Strings (e.g. "28-10-2003") -> Parsed with dayfirst=True
-        # 3. Handle errors gracefully
-        if 'dob' in df.columns:
-            df['dob'] = pd.to_datetime(df['dob'], dayfirst=True, errors='coerce').dt.strftime('%d-%m-%Y')
+        if sheet_name not in CACHED_DFS:
+            print(f"Loading Sheet: '{sheet_name}'")
+            try:
+                # Read specific sheet
+                df = pd.read_excel(STUDENT_LOGIN_FILE, sheet_name=sheet_name)
+            except ValueError:
+                 # Sheet not found
+                 raise HTTPException(status_code=400, detail=f"Course '{sheet_name}' not found in records")
+            
+            # Ensure 'id' is treated as a string (handle scientific notation & float)
+            if 'id' in df.columns:
+                def clean_id(x):
+                    try:
+                        if pd.isna(x): return ""
+                        # If float like 123.0, convert to int then str -> "123"
+                        # If numeric string "123", just "123"
+                        # If float 1.2E+11, int() handles it usually if small enough, but python float does.
+                        if isinstance(x, float):
+                            return str(int(x))
+                        if isinstance(x, int):
+                            return str(x)
+                        return str(x).strip()
+                    except:
+                        return str(x).strip()
+
+                df['id'] = df['id'].apply(clean_id)
+            
+            # Treat 'dob' as a generic password field (string)
+            if 'dob' in df.columns:
+                # Try to convert to datetime first to normalize format
+                # This handles both Excel date objects and string dates like "25-Jun-2004"
+                try:
+                    # Convert to datetime, coerce errors to NaT
+                    temp_dates = pd.to_datetime(df['dob'], errors='coerce')
+                    
+                    # Create a mask for valid dates
+                    mask = temp_dates.notna()
+                    
+                    # Format valid dates to DD-MMM-YY (e.g., 08-Sep-04)
+                    df.loc[mask, 'dob'] = temp_dates[mask].dt.strftime('%d-%b-%y')
+                    
+                    # For invalid dates (or already strings that failed parsing), ensure they are strings
+                    df.loc[~mask, 'dob'] = df.loc[~mask, 'dob'].astype(str).str.strip()
+                    
+                except Exception as e:
+                    # Fallback
+                    print(f"Date conversion error: {e}")
+                    df['dob'] = df['dob'].astype(str).str.strip()
+            
+            CACHED_DFS[sheet_name] = df.fillna("")
+            
+        return CACHED_DFS[sheet_name]
         
-        return df.fillna("")
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error reading Excel: {e}")
-        raise HTTPException(status_code=500, detail="Student login file not found")
+        raise HTTPException(status_code=500, detail=f"Error reading course data: {str(e)}")
 
 def get_all_rows():
     return get_sheet().get_all_records()
@@ -127,41 +187,47 @@ def login(data: LoginRequest):
         else:
             raise HTTPException(status_code=401, detail="Invalid Admin Password")
 
-    # ===== STUDENT LOGIN (UNCHANGED) =====
-    df = get_students_from_excel()
- 
-  
+    # ===== STUDENT LOGIN =====
+    # Students must select a course
+    if not data.course:
+         raise HTTPException(status_code=400, detail="Please select a course")
+         
+    # Load specific sheet
+    df = get_students_from_excel(sheet_name=data.course)
 
     # Clean data: ensure strings and strip whitespace
-    df["id"] = df["id"].astype(str).str.strip()
-    df["dob"] = df["dob"].astype(str).str.strip()
+    # Note: caching might already do this, but safe to do on df view
+    # Actually, cache does it. But specific checking here:
     
     input_id = str(data.id).strip()
     input_pass = str(data.password).strip()
 
-    print(f"DEBUG: Input ID: '{input_id}', Input Password: '{input_pass}'")
+    print(f"DEBUG: Input ID: '{input_id}', Input Password: '{input_pass}', Course: '{data.course}'")
     
-    # Check if ID exists first (for better error message)
+    # Check if ID exists first
     user_row = df[df["id"] == input_id]
     
     if user_row.empty:
-        print(f"DEBUG: ID '{input_id}' not found in Excel IDs: {df['id'].tolist()}")
-        raise HTTPException(status_code=401, detail=f"User ID '{input_id}' not found in records")
+        print(f"DEBUG: ID '{input_id}' not found in {data.course}")
+        raise HTTPException(status_code=401, detail=f"User ID '{input_id}' not found in {data.course} records")
 
-    print(f"DEBUG: User found. Stored DOB: '{user_row.iloc[0]['dob']}'")
+    print(f"DEBUG: User found. Stored Pass: '{user_row.iloc[0]['dob']}'")
     
     # Check password
     if user_row.iloc[0]["dob"] == input_pass:
+        # Convert row to dict and handle NaN
+        student_details = user_row.iloc[0].fillna("").to_dict()
         return {
             "role": "student",
-            "student_id": input_id
+            "student_id": input_id,
+            "student_details": student_details
         }
 
     # If we get here, ID matched but Password didn't
     stored_dob = user_row.iloc[0]['dob']
     raise HTTPException(
         status_code=401, 
-        detail=f"Password mismatch. Input: '{input_pass}', Stored: '{stored_dob}'"
+        detail=f"Password mismatch."
     )
 
 # ================= STUDENT API =================
