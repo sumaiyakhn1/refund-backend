@@ -20,8 +20,14 @@ app.add_middleware(
 )
 
 # ================= ADMIN CONFIG =================
-ADMIN_ID = "7705033040"
-ADMIN_PASSWORD = "admin@7705"   # 🔐 CHANGE THIS if you want
+# ================= ADMIN CONFIG =================
+ADMIN_ROLES = {
+    "super_admin": {"pass": "super@123", "permissions": "all"},  # Super Admin
+    "fee_admin":   {"pass": "fee@123",   "permissions": "fee_cleared"},
+    "lib_admin":   {"pass": "lib@123",   "permissions": "library_cleared"},
+    "schol_admin": {"pass": "schol@123", "permissions": "scholarship_cleared"},
+    "reg_admin":   {"pass": "reg@123",   "permissions": "registration_cleared"},
+}
 
 # ================= PATH CONFIG =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -106,13 +112,20 @@ def find_row_number(student_id: str):
 # ================= LOGIN API =================
 @app.post("/login")
 def login(data: LoginRequest):
+    cid = data.id.strip()
+    cpass = data.password.strip()
 
-    # ===== ADMIN LOGIN (SECURE) =====
-    if data.id == ADMIN_ID and data.password == ADMIN_PASSWORD:
-        return {
-            "role": "admin",
-            "admin_id": ADMIN_ID
-        }
+    # ===== ADMIN LOGIN (ROLE BASED) =====
+    if cid in ADMIN_ROLES:
+        admin_data = ADMIN_ROLES[cid]
+        if admin_data["pass"] == cpass:
+            return {
+                "role": "admin",
+                "admin_id": cid,
+                "permissions": admin_data["permissions"]
+            }
+        else:
+            raise HTTPException(status_code=401, detail="Invalid Admin Password")
 
     # ===== STUDENT LOGIN (UNCHANGED) =====
     df = get_students_from_excel()
