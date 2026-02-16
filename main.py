@@ -66,6 +66,7 @@ class LoginRequest(BaseModel):
     course: str | None = None  # Optional for admin, required for student
 
 class StudentData(BaseModel):
+    timestamp: str | None = None
     student_id: str
     student_name: str | None = None
     bank_name: str | None = None
