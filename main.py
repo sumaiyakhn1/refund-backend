@@ -46,14 +46,17 @@ SCOPES = [
 import json
 
 def get_sheet():
-    service_account_info = json.loads(
-        os.environ["GOOGLE_SERVICE_ACCOUNT"]
-    )
-
-    creds = Credentials.from_service_account_info(
-        service_account_info,
-        scopes=SCOPES
-    )
+    try:
+        if "GOOGLE_SERVICE_ACCOUNT" in os.environ:
+            service_account_info = json.loads(os.environ["GOOGLE_SERVICE_ACCOUNT"])
+            creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
+        else:
+            # Fallback to local file for easier local development
+            creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
+    except Exception as e:
+        print(f"Error loading credentials: {e}")
+        # Final fallback/attempt
+        creds = Credentials.from_service_account_file("service_account.json", scopes=SCOPES)
 
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(SPREADSHEET_ID)
@@ -78,6 +81,7 @@ class StudentData(BaseModel):
     scholarship_cleared: str | None = None
     registration_cleared: str | None = None
     status: str | None = None
+    remark: str | None = None
 
 # ================= HELPERS =================
 # Global Cache: Maps sheet_name -> DataFrame
@@ -248,6 +252,9 @@ def get_all_students():
 def create_or_update_student(data: StudentData):
     sheet = get_sheet()
     row_number = find_row_number(data.student_id)
+    
+    print(f"DEBUG: updating student {data.student_id}. Row: {row_number}")
+    print(f"DEBUG: Data Received: {data.dict()}")
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -263,11 +270,12 @@ def create_or_update_student(data: StudentData):
         data.library_cleared,
         data.scholarship_cleared,
         data.registration_cleared,
-        data.status
+        data.status,
+        data.remark
     ]
 
     if row_number:
-        sheet.update(f"A{row_number}:L{row_number}", [row])
+        sheet.update(f"A{row_number}:M{row_number}", [row])
         return {"message": "Student updated"}
     else:
         sheet.append_row(row)
