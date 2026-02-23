@@ -290,7 +290,12 @@ def download_excel():
     if not records:
         raise HTTPException(status_code=400, detail="No data to export")
 
-    df = pd.DataFrame(records)
+    # Only include entries where status is APPROVED
+    approved_records = [r for r in records if str(r.get("status", "")).upper() == "APPROVED"]
+    if not approved_records:
+        raise HTTPException(status_code=400, detail="No approved entries to export")
+
+    df = pd.DataFrame(approved_records)
     file_name = "students.xlsx"
     df.to_excel(file_name, index=False)
 
