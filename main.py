@@ -84,6 +84,8 @@ class StudentData(BaseModel):
     remark: str | None = None
     engaged: str | None = None
     security: str | None = None
+    course: str | None = None
+
 
 
 # ================= HELPERS =================
@@ -168,8 +170,40 @@ def get_students_from_excel(sheet_name="Sheet1"):
         print(f"Error reading Excel: {e}")
         raise HTTPException(status_code=500, detail=f"Error reading course data: {str(e)}")
 
+def get_security_mapping():
+    """Reads all sheets from the local Excel and builds an ID -> Security mapping."""
+    if not os.path.exists(STUDENT_LOGIN_FILE):
+        return {}
+    
+    mapping = {}
+    try:
+        xl = pd.ExcelFile(STUDENT_LOGIN_FILE)
+        for sheet_name in xl.sheet_names:
+            df = pd.read_excel(xl, sheet_name=sheet_name)
+            # Standardize columns to lowercase for easier matching
+            df.columns = [str(c).strip().lower() for c in df.columns]
+            
+            if 'id' in df.columns and 'security' in df.columns:
+                for _, row in df.iterrows():
+                    val = row['id']
+                    if pd.isna(val): continue
+                    try:
+                        # Handle float IDs like 123.0 -> "123"
+                        sid = str(int(float(val))).strip()
+                    except:
+                        sid = str(val).strip()
+                    
+                    sec_val = row['security']
+                    if not pd.isna(sec_val):
+                        mapping[sid] = str(sec_val).strip()
+    except Exception as e:
+        print(f"Error building security mapping: {e}")
+    
+    return mapping
+
 def get_all_rows():
     return get_sheet().get_all_records()
+
 
 def find_row_number(student_id: str):
     for idx, row in enumerate(get_all_rows()):
@@ -225,11 +259,22 @@ def login(data: LoginRequest):
     if user_row.iloc[0]["dob"] == input_pass:
         # Convert row to dict and handle NaN
         student_details = user_row.iloc[0].fillna("").to_dict()
+        
+        # Add security if available in mapping
+        security_map = get_security_mapping()
+        if input_id in security_map:
+            student_details["security"] = security_map[input_id]
+        
+        # Add course to details
+        student_details["course"] = data.course
+
         return {
+
             "role": "student",
             "student_id": input_id,
             "student_details": student_details
         }
+
 
     # If we get here, ID matched but Password didn't
     stored_dob = user_row.iloc[0]['dob']
@@ -241,15 +286,30 @@ def login(data: LoginRequest):
 # ================= STUDENT API =================
 @app.get("/student/{student_id}")
 def get_student(student_id: str):
+    security_map = get_security_mapping()
     for row in get_all_rows():
         if str(row.get("student_id")) == student_id:
+            # Enrich with security if missing
+            if not row.get("security") and student_id in security_map:
+                row["security"] = security_map[student_id]
             return row
     raise HTTPException(status_code=404, detail="Student not found")
+
 
 # ================= ADMIN APIs =================
 @app.get("/admin/students")
 def get_all_students():
-    return get_all_rows()
+    records = get_all_rows()
+    security_map = get_security_mapping()
+
+    for r in records:
+        sid = str(r.get("student_id", "")).strip()
+        # If security is missing in Google Sheet, try mapping from local Excel
+        if not r.get("security") and sid in security_map:
+            r["security"] = security_map[sid]
+
+    return records
+
 
 @app.post("/admin/student")
 def create_or_update_student(data: StudentData):
@@ -276,11 +336,13 @@ def create_or_update_student(data: StudentData):
         data.status,
         data.remark,
         data.engaged,
-        data.security
+        data.security,
+        data.course
     ]
 
     if row_number:
-        sheet.update(f"A{row_number}:O{row_number}", [row])
+        sheet.update(f"A{row_number}:P{row_number}", [row])
+
         return {"message": "Student updated"}
     else:
         sheet.append_row(row)
@@ -293,14 +355,26 @@ def download_excel():
     if not records:
         raise HTTPException(status_code=400, detail="No data to export")
 
+    # Get security mapping from local Excel
+    security_map = get_security_mapping()
+
     # Only include entries where status is APPROVED
-    approved_records = [r for r in records if str(r.get("status", "")).upper() == "APPROVED"]
+    approved_records = []
+    for r in records:
+        if str(r.get("status", "")).upper() == "APPROVED":
+            sid = str(r.get("student_id", "")).strip()
+            # If security is missing in Google Sheet, try mapping from local Excel
+            if not r.get("security") and sid in security_map:
+                r["security"] = security_map[sid]
+            approved_records.append(r)
+
     if not approved_records:
         raise HTTPException(status_code=400, detail="No approved entries to export")
 
     df = pd.DataFrame(approved_records)
     file_name = "students.xlsx"
     df.to_excel(file_name, index=False)
+
 
     return FileResponse(
         file_name,
