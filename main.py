@@ -170,8 +170,8 @@ def get_students_from_excel(sheet_name="Sheet1"):
         print(f"Error reading Excel: {e}")
         raise HTTPException(status_code=500, detail=f"Error reading course data: {str(e)}")
 
-def get_security_mapping():
-    """Reads all sheets from the local Excel and builds an ID -> Security mapping."""
+def get_excel_data_mapping():
+    """Reads all sheets from the local Excel and builds an ID -> {security, mobile} mapping."""
     if not os.path.exists(STUDENT_LOGIN_FILE):
         return {}
     
@@ -183,7 +183,11 @@ def get_security_mapping():
             # Standardize columns to lowercase for easier matching
             df.columns = [str(c).strip().lower() for c in df.columns]
             
-            if 'id' in df.columns and 'security' in df.columns:
+            if 'id' in df.columns:
+                # Find security and mobile columns
+                sec_col = next((c for c in df.columns if 'security' in c), None)
+                mob_col = next((c for c in df.columns if 'mobile' in c), None)
+
                 for _, row in df.iterrows():
                     val = row['id']
                     if pd.isna(val): continue
@@ -193,11 +197,16 @@ def get_security_mapping():
                     except:
                         sid = str(val).strip()
                     
-                    sec_val = row['security']
-                    if not pd.isna(sec_val):
-                        mapping[sid] = str(sec_val).strip()
+                    if sid not in mapping:
+                        mapping[sid] = {}
+
+                    if sec_col and not pd.isna(row[sec_col]):
+                        mapping[sid]["security"] = str(row[sec_col]).strip()
+                    
+                    if mob_col and not pd.isna(row[mob_col]):
+                        mapping[sid]["student_mobile"] = str(row[mob_col]).strip()
     except Exception as e:
-        print(f"Error building security mapping: {e}")
+        print(f"Error building excel data mapping: {e}")
     
     return mapping
 
@@ -260,10 +269,11 @@ def login(data: LoginRequest):
         # Convert row to dict and handle NaN
         student_details = user_row.iloc[0].fillna("").to_dict()
         
-        # Add security if available in mapping
-        security_map = get_security_mapping()
-        if input_id in security_map:
-            student_details["security"] = security_map[input_id]
+        # Add enhanced details if available in mapping
+        excel_map = get_excel_data_mapping()
+        if input_id in excel_map:
+            for key, val in excel_map[input_id].items():
+                student_details[key] = val
         
         # Add course to details
         student_details["course"] = data.course
@@ -286,12 +296,14 @@ def login(data: LoginRequest):
 # ================= STUDENT API =================
 @app.get("/student/{student_id}")
 def get_student(student_id: str):
-    security_map = get_security_mapping()
+    excel_map = get_excel_data_mapping()
     for row in get_all_rows():
         if str(row.get("student_id")) == student_id:
-            # Enrich with security if missing
-            if not row.get("security") and student_id in security_map:
-                row["security"] = security_map[student_id]
+            # Enrich with excel data if missing
+            if student_id in excel_map:
+                for key, val in excel_map[student_id].items():
+                    if not row.get(key):
+                        row[key] = val
             return row
     raise HTTPException(status_code=404, detail="Student not found")
 
@@ -300,13 +312,14 @@ def get_student(student_id: str):
 @app.get("/admin/students")
 def get_all_students():
     records = get_all_rows()
-    security_map = get_security_mapping()
+    excel_map = get_excel_data_mapping()
 
     for r in records:
         sid = str(r.get("student_id", "")).strip()
-        # If security is missing in Google Sheet, try mapping from local Excel
-        if not r.get("security") and sid in security_map:
-            r["security"] = security_map[sid]
+        if sid in excel_map:
+            for key, val in excel_map[sid].items():
+                if not r.get(key):
+                    r[key] = val
 
     return records
 
@@ -363,9 +376,10 @@ def download_excel():
     for r in records:
         if str(r.get("status", "")).upper() == "APPROVED":
             sid = str(r.get("student_id", "")).strip()
-            # If security is missing in Google Sheet, try mapping from local Excel
-            if not r.get("security") and sid in security_map:
-                r["security"] = security_map[sid]
+            if sid in excel_map:
+                for key, val in excel_map[sid].items():
+                    if not r.get(key):
+                        r[key] = val
             approved_records.append(r)
 
     if not approved_records:
