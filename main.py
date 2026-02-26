@@ -83,6 +83,8 @@ class StudentData(BaseModel):
     status: str | None = None
     remark: str | None = None
     engaged: str | None = None
+    security: str | None = None
+
 
 # ================= HELPERS =================
 # Global Cache: Maps sheet_name -> DataFrame
@@ -273,11 +275,12 @@ def create_or_update_student(data: StudentData):
         data.registration_cleared,
         data.status,
         data.remark,
-        data.engaged
+        data.engaged,
+        data.security
     ]
 
     if row_number:
-        sheet.update(f"A{row_number}:N{row_number}", [row])
+        sheet.update(f"A{row_number}:O{row_number}", [row])
         return {"message": "Student updated"}
     else:
         sheet.append_row(row)
