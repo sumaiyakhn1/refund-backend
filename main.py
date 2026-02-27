@@ -76,6 +76,7 @@ class StudentData(BaseModel):
     account_no: str | None = None
     ifsc: str | None = None
     account_holder: str | None = None
+    student_mobile: str | None = None
     fee_cleared: str | None = None
     library_cleared: str | None = None
     scholarship_cleared: str | None = None
@@ -135,7 +136,6 @@ def get_students_from_excel(sheet_name="Sheet1"):
                         return str(x).strip()
                     except:
                         return str(x).strip()
-
                 df['id'] = df['id'].apply(clean_id)
             
             # Treat 'dob' as a generic password field (string)
@@ -323,6 +323,24 @@ def get_all_students():
 
     return records
 
+class StudentData(BaseModel):
+    timestamp: str | None = None
+    student_id: str
+    student_name: str | None = None
+    bank_name: str | None = None
+    account_no: str | None = None
+    ifsc: str | None = None
+    account_holder: str | None = None
+    contact_mobile: str | None = None
+    fee_cleared: str | None = None
+    library_cleared: str | None = None
+    scholarship_cleared: str | None = None
+    registration_cleared: str | None = None
+    status: str | None = None
+    remark: str | None = None
+    engaged: str | None = None
+    security: str | None = None
+    course: str | None = None
 
 @app.post("/admin/student")
 def create_or_update_student(data: StudentData):
@@ -350,11 +368,12 @@ def create_or_update_student(data: StudentData):
         data.remark,
         data.engaged,
         data.security,
-        data.course
+        data.course,
+        data.contact_mobile
     ]
 
     if row_number:
-        sheet.update(f"A{row_number}:P{row_number}", [row])
+        sheet.update(f"A{row_number}:Q{row_number}", [row])
 
         return {"message": "Student updated"}
     else:
@@ -368,8 +387,8 @@ def download_excel():
     if not records:
         raise HTTPException(status_code=400, detail="No data to export")
 
-    # Get security mapping from local Excel
-    security_map = get_security_mapping()
+    # Get excel mapping from local Excel
+    excel_map = get_excel_data_mapping()
 
     # Only include entries where status is APPROVED
     approved_records = []
