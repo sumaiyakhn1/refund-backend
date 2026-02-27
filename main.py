@@ -273,10 +273,13 @@ def login(data: LoginRequest):
         print(f"DEBUG: ID '{input_id}' not found in {data.course}")
         raise HTTPException(status_code=401, detail=f"User ID '{input_id}' not found in {data.course} records")
 
-    print(f"DEBUG: User found. Stored Pass: '{user_row.iloc[0]['dob']}'")
+    print(f"DEBUG: User found. Stored Pass: '{user_row.iloc[0].get('Registration No', str(user_row.iloc[0].get('registration no', '')))}'")
     
-    # Check password
-    if user_row.iloc[0]["dob"] == input_pass:
+    # Match Registration No directly
+    # Need to handle variations in case and ensure strings matching
+    stored_pass = str(user_row.iloc[0].get("Registration No", str(user_row.iloc[0].get("registration no", "")))).strip()
+    
+    if stored_pass == input_pass:
         # Convert row to dict and handle NaN
         student_details = user_row.iloc[0].fillna("").to_dict()
         
@@ -298,7 +301,6 @@ def login(data: LoginRequest):
 
 
     # If we get here, ID matched but Password didn't
-    stored_dob = user_row.iloc[0]['dob']
     raise HTTPException(
         status_code=401, 
         detail=f"Password mismatch."
