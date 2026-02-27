@@ -214,11 +214,14 @@ def get_all_rows():
     records = get_sheet().get_all_records()
     # Handle the specific column header in Google Sheets for the new contact mobile
     for row in records:
-        if "student mobile no 2" in row:
-            row["contact_mobile"] = str(row["student mobile no 2"]).strip()
-        # Ensure it always exists
-        if "contact_mobile" not in row:
-            row["contact_mobile"] = ""
+        contact_val = ""
+        for key, val in row.items():
+            clean_key = str(key).strip().lower()
+            if clean_key == "student mobile no 2" or "mobile no 2" in clean_key:
+                contact_val = str(val).strip()
+                break
+        
+        row["contact_mobile"] = contact_val
     return records
 
 
