@@ -417,16 +417,23 @@ def download_excel():
 
     df = pd.DataFrame(approved_records)
     
-    # Clean up duplicate columns from manual entries in the Google Sheet
+    # Clean up backend-only columns and duplicate manual columns
     if 'Application Contact No' in df.columns:
         df = df.drop(columns=['Application Contact No'])
+    if 'contact_mobile' in df.columns:
+        df = df.drop(columns=['contact_mobile'])
 
     # Remove 'student_mobile' (College Record Mobile No) as it's not needed
     if 'student_mobile' in df.columns:
         df = df.drop(columns=['student_mobile'])
         
-    # Rename 'contact_mobile' for a cleaner Excel header
-    df = df.rename(columns={'contact_mobile': 'Application Contact No'})
+    # Rename the actual Google Sheet column 'student mobile no 2' to 'Application Contact No'
+    # We use a loop because pandas column matching needs to handle slight case/space differences
+    for col in list(df.columns):
+        clean_col = str(col).strip().lower()
+        if clean_col == "student mobile no 2" or "mobile no 2" in clean_col:
+            df = df.rename(columns={col: 'Application Contact No'})
+            break
     
     file_name = "students.xlsx"
     df.to_excel(file_name, index=False)
