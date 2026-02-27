@@ -31,7 +31,7 @@ ADMIN_ROLES = {
 
 # ================= PATH CONFIG =================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-STUDENT_LOGIN_FILE = os.path.join(BASE_DIR, "5_6075497004178349834.xlsx")
+STUDENT_LOGIN_FILE = os.path.join(BASE_DIR, "F926E400.xlsx")
 
 # ================= GOOGLE SHEET CONFIG =================
 SPREADSHEET_ID = "14iL5gSZTbBYx2yYm8olZ1ICfJLu2UolGEkFLny3kdtQ"
