@@ -405,6 +405,14 @@ def download_excel():
         raise HTTPException(status_code=400, detail="No approved entries to export")
 
     df = pd.DataFrame(approved_records)
+    
+    # Remove 'student_mobile' (College Record Mobile No) as it's not needed
+    if 'student_mobile' in df.columns:
+        df = df.drop(columns=['student_mobile'])
+        
+    # Rename 'contact_mobile' for a cleaner Excel header
+    df = df.rename(columns={'contact_mobile': 'Application Contact No'})
+    
     file_name = "students.xlsx"
     df.to_excel(file_name, index=False)
 
