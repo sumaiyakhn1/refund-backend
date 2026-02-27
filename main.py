@@ -211,7 +211,15 @@ def get_excel_data_mapping():
     return mapping
 
 def get_all_rows():
-    return get_sheet().get_all_records()
+    records = get_sheet().get_all_records()
+    # Handle the specific column header in Google Sheets for the new contact mobile
+    for row in records:
+        if "student mobile no 2" in row:
+            row["contact_mobile"] = str(row["student mobile no 2"]).strip()
+        # Ensure it always exists
+        if "contact_mobile" not in row:
+            row["contact_mobile"] = ""
+    return records
 
 
 def find_row_number(student_id: str):
