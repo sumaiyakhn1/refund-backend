@@ -417,6 +417,10 @@ def download_excel():
 
     df = pd.DataFrame(approved_records)
     
+    # Clean up duplicate columns from manual entries in the Google Sheet
+    if 'Application Contact No' in df.columns:
+        df = df.drop(columns=['Application Contact No'])
+
     # Remove 'student_mobile' (College Record Mobile No) as it's not needed
     if 'student_mobile' in df.columns:
         df = df.drop(columns=['student_mobile'])
