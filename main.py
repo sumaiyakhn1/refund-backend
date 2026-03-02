@@ -76,6 +76,7 @@ class StudentData(BaseModel):
     account_no: str | None = None
     ifsc: str | None = None
     account_holder: str | None = None
+    mother_name: str | None = None
     student_mobile: str | None = None
     fee_cleared: str | None = None
     library_cleared: str | None = None
@@ -344,6 +345,7 @@ class StudentData(BaseModel):
     account_no: str | None = None
     ifsc: str | None = None
     account_holder: str | None = None
+    mother_name: str | None = None
     contact_mobile: str | None = None
     fee_cleared: str | None = None
     library_cleared: str | None = None
@@ -382,11 +384,12 @@ def create_or_update_student(data: StudentData):
         data.engaged,
         data.security,
         data.course,
-        data.contact_mobile
+        data.contact_mobile,
+        data.mother_name
     ]
 
     if row_number:
-        sheet.update(f"A{row_number}:Q{row_number}", [row])
+        sheet.update(f"A{row_number}:R{row_number}", [row])
 
         return {"message": "Student updated"}
     else:
