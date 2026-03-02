@@ -213,16 +213,20 @@ def get_excel_data_mapping():
 
 def get_all_rows():
     records = get_sheet().get_all_records()
-    # Handle the specific column header in Google Sheets for the new contact mobile
+    # Handle the specific column header in Google Sheets for the new contact mobile and mother name
     for row in records:
-        contact_val = ""
+        contact_val = row.get("contact_mobile", "")
+        mother_val = row.get("mother_name", "")
+        
         for key, val in row.items():
             clean_key = str(key).strip().lower()
             if clean_key == "student mobile no 2" or "mobile no 2" in clean_key:
                 contact_val = str(val).strip()
-                break
+            if clean_key == "mother name" or clean_key == "mother_name":
+                mother_val = str(val).strip()
         
         row["contact_mobile"] = contact_val
+        row["mother_name"] = mother_val
     return records
 
 
@@ -431,6 +435,9 @@ def download_excel():
     # Remove 'student_mobile' (College Record Mobile No) as it's not needed
     if 'student_mobile' in df.columns:
         df = df.drop(columns=['student_mobile'])
+        
+    if 'mother_name' in df.columns:
+        df = df.drop(columns=['mother_name'])
         
     # Rename the actual Google Sheet column 'student mobile no 2' to 'Application Contact No'
     # We use a loop because pandas column matching needs to handle slight case/space differences
