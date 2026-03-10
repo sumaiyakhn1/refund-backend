@@ -78,6 +78,7 @@ class StudentData(BaseModel):
     account_holder: str | None = None
     mother_name: str | None = None
     student_mobile: str | None = None
+    contact_mobile: str | None = None
     fee_cleared: str | None = None
     library_cleared: str | None = None
     scholarship_cleared: str | None = None
@@ -91,143 +92,55 @@ class StudentData(BaseModel):
 
 
 # ================= HELPERS =================
-# Global Cache: Maps sheet_name -> DataFrame
-CACHED_DFS = {} 
-LAST_MTIME = 0
-
-def get_students_from_excel(sheet_name="Sheet1"):
-    global CACHED_DFS, LAST_MTIME
-    
-    try:
-        # Check file modification time
-        if not os.path.exists(STUDENT_LOGIN_FILE):
-             raise HTTPException(status_code=500, detail="Student login file not found")
-             
-        current_mtime = os.path.getmtime(STUDENT_LOGIN_FILE)
-        
-        # Reload if file changed or sheet not in cache
-        # If file changed, we might want to clear entire cache? 
-        # Yes, good practice to invalidate all if underlying file changed.
-        if current_mtime > LAST_MTIME:
-            print(f"File changed. Clearing cache. (Modified: {datetime.fromtimestamp(current_mtime)})")
-            CACHED_DFS = {}
-            LAST_MTIME = current_mtime
-            
-        if sheet_name not in CACHED_DFS:
-            print(f"Loading Sheet: '{sheet_name}'")
-            try:
-                # Read specific sheet
-                df = pd.read_excel(STUDENT_LOGIN_FILE, sheet_name=sheet_name)
-            except ValueError:
-                 # Sheet not found
-                 raise HTTPException(status_code=400, detail=f"Course '{sheet_name}' not found in records")
-            
-            # Ensure 'id' is treated as a string (handle scientific notation & float)
-            if 'id' in df.columns:
-                def clean_id(x):
-                    try:
-                        if pd.isna(x): return ""
-                        # If float like 123.0, convert to int then str -> "123"
-                        # If numeric string "123", just "123"
-                        # If float 1.2E+11, int() handles it usually if small enough, but python float does.
-                        if isinstance(x, float):
-                            return str(int(x))
-                        if isinstance(x, int):
-                            return str(x)
-                        return str(x).strip()
-                    except:
-                        return str(x).strip()
-                df['id'] = df['id'].apply(clean_id)
-            
-            # Treat 'dob' as a generic password field (string)
-            if 'dob' in df.columns:
-                # Try to convert to datetime first to normalize format
-                # This handles both Excel date objects and string dates like "25-Jun-2004"
-                try:
-                    # Convert to datetime, coerce errors to NaT
-                    temp_dates = pd.to_datetime(df['dob'], errors='coerce')
-                    
-                    # Create a mask for valid dates
-                    mask = temp_dates.notna()
-                    
-                    # Format valid dates to DD-MMM-YY (e.g., 08-Sep-04)
-                    df.loc[mask, 'dob'] = temp_dates[mask].dt.strftime('%d-%b-%y')
-                    
-                    # For invalid dates (or already strings that failed parsing), ensure they are strings
-                    df.loc[~mask, 'dob'] = df.loc[~mask, 'dob'].astype(str).str.strip()
-                    
-                except Exception as e:
-                    # Fallback
-                    print(f"Date conversion error: {e}")
-                    df['dob'] = df['dob'].astype(str).str.strip()
-            
-            CACHED_DFS[sheet_name] = df.fillna("")
-            
-        return CACHED_DFS[sheet_name]
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error reading Excel: {e}")
-        raise HTTPException(status_code=500, detail=f"Error reading course data: {str(e)}")
-
-def get_excel_data_mapping():
-    """Reads all sheets from the local Excel and builds an ID -> {security, mobile} mapping."""
-    if not os.path.exists(STUDENT_LOGIN_FILE):
-        return {}
-    
-    mapping = {}
-    try:
-        xl = pd.ExcelFile(STUDENT_LOGIN_FILE)
-        for sheet_name in xl.sheet_names:
-            df = pd.read_excel(xl, sheet_name=sheet_name)
-            # Standardize columns to lowercase for easier matching
-            df.columns = [str(c).strip().lower() for c in df.columns]
-            
-            if 'id' in df.columns:
-                # Find security and mobile columns
-                sec_col = next((c for c in df.columns if 'security' in c), None)
-                mob_col = next((c for c in df.columns if 'mobile' in c), None)
-
-                for _, row in df.iterrows():
-                    val = row['id']
-                    if pd.isna(val): continue
-                    try:
-                        # Handle float IDs like 123.0 -> "123"
-                        sid = str(int(float(val))).strip()
-                    except:
-                        sid = str(val).strip()
-                    
-                    if sid not in mapping:
-                        mapping[sid] = {}
-
-                    if sec_col and not pd.isna(row[sec_col]):
-                        mapping[sid]["security"] = str(row[sec_col]).strip()
-                    
-                    if mob_col and not pd.isna(row[mob_col]):
-                        mapping[sid]["student_mobile"] = str(row[mob_col]).strip()
-    except Exception as e:
-        print(f"Error building excel data mapping: {e}")
-    
-    return mapping
-
 def get_all_rows():
-    records = get_sheet().get_all_records()
-    # Handle the specific column header in Google Sheets for the new contact mobile and mother name
-    for row in records:
-        contact_val = row.get("contact_mobile", "")
-        mother_val = row.get("mother_name", "")
+    try:
+        sheet = get_sheet()
+        values = sheet.get_all_values()
+        if not values:
+            return []
+            
+        header = values[0]
+        # Standard columns we expect
+        EXPECTED_COLS = [
+            'timestamp', 'student_id', 'student_name', 'bank_name', 'account_no', 
+            'ifsc', 'account_holder', 'fee_cleared', 'library_cleared', 
+            'scholarship_cleared', 'registration_cleared', 'status', 'remark', 
+            'engaged', 'security', 'course', 'contact_mobile', 'mother_name', 
+            'photo', 'student_mobile'
+        ]
         
-        for key, val in row.items():
-            clean_key = str(key).strip().lower()
-            if clean_key == "student mobile no 2" or "mobile no 2" in clean_key:
-                contact_val = str(val).strip()
-            if clean_key == "mother name" or clean_key == "mother_name":
-                mother_val = str(val).strip()
-        
-        row["contact_mobile"] = contact_val
-        row["mother_name"] = mother_val
-    return records
+        records = []
+        for row in values[1:]:
+            record = {}
+            for i, val in enumerate(row):
+                if i < len(EXPECTED_COLS):
+                    key = EXPECTED_COLS[i]
+                else:
+                    # Fallback for extra columns
+                    key = header[i] if i < len(header) and header[i] else f"col_{i}"
+                
+                record[key] = val
+            
+            # Additional cleanup/normalization
+            contact_val = record.get("contact_mobile") or ""
+            mother_val = record.get("mother_name") or ""
+            
+            # Robust mobile check (some older sheets might have 'student mobile no 2')
+            if not contact_val:
+                for i, col_name in enumerate(header):
+                    if i < len(row):
+                        clean_key = str(col_name).strip().lower()
+                        if "mobile no 2" in clean_key:
+                            contact_val = str(row[i]).strip()
+            
+            record["contact_mobile"] = contact_val
+            record["mother_name"] = mother_val
+            records.append(record)
+            
+        return records
+    except Exception as e:
+        print(f"Error getting records: {e}")
+        return []
 
 
 def find_row_number(student_id: str):
@@ -254,74 +167,14 @@ def login(data: LoginRequest):
         else:
             raise HTTPException(status_code=401, detail="Invalid Admin Password")
 
-    # ===== STUDENT LOGIN =====
-    # Students must select a course
-    if not data.course:
-         raise HTTPException(status_code=400, detail="Please select a course")
-         
-    # Load specific sheet
-    df = get_students_from_excel(sheet_name=data.course)
-
-    # Clean data: ensure strings and strip whitespace
-    # Note: caching might already do this, but safe to do on df view
-    # Actually, cache does it. But specific checking here:
-    
-    input_id = str(data.id).strip()
-    input_pass = str(data.password).strip()
-
-    print(f"DEBUG: Input ID: '{input_id}', Input Password: '{input_pass}', Course: '{data.course}'")
-    
-    # Check if ID exists first
-    user_row = df[df["id"] == input_id]
-    
-    if user_row.empty:
-        print(f"DEBUG: ID '{input_id}' not found in {data.course}")
-        raise HTTPException(status_code=401, detail=f"User ID '{input_id}' not found in {data.course} records")
-
-    print(f"DEBUG: User found. Stored Pass: '{user_row.iloc[0].get('Registration No', str(user_row.iloc[0].get('registration no', '')))}'")
-    
-    # Match Registration No directly
-    # Need to handle variations in case and ensure strings matching
-    stored_pass = str(user_row.iloc[0].get("Registration No", str(user_row.iloc[0].get("registration no", "")))).strip()
-    
-    if stored_pass == input_pass:
-        # Convert row to dict and handle NaN
-        student_details = user_row.iloc[0].fillna("").to_dict()
-        
-        # Add enhanced details if available in mapping
-        excel_map = get_excel_data_mapping()
-        if input_id in excel_map:
-            for key, val in excel_map[input_id].items():
-                student_details[key] = val
-        
-        # Add course to details
-        student_details["course"] = data.course
-
-        return {
-
-            "role": "student",
-            "student_id": input_id,
-            "student_details": student_details
-        }
-
-
-    # If we get here, ID matched but Password didn't
-    raise HTTPException(
-        status_code=401, 
-        detail=f"Password mismatch."
-    )
+    # ===== STUDENT LOGIN (NOW HANDLED ON FRONTEND VIA OFFICIAL API) =====
+    raise HTTPException(status_code=401, detail="Student login must be performed via the official portal")
 
 # ================= STUDENT API =================
 @app.get("/student/{student_id}")
 def get_student(student_id: str):
-    excel_map = get_excel_data_mapping()
     for row in get_all_rows():
         if str(row.get("student_id")) == student_id:
-            # Enrich with excel data if missing
-            if student_id in excel_map:
-                for key, val in excel_map[student_id].items():
-                    if not row.get(key):
-                        row[key] = val
             return row
     raise HTTPException(status_code=404, detail="Student not found")
 
@@ -329,21 +182,11 @@ def get_student(student_id: str):
 # ================= ADMIN APIs =================
 @app.get("/admin/students")
 def get_all_students():
-    records = get_all_rows()
-    excel_map = get_excel_data_mapping()
-
-    for r in records:
-        sid = str(r.get("student_id", "")).strip()
-        if sid in excel_map:
-            for key, val in excel_map[sid].items():
-                if not r.get(key):
-                    r[key] = val
-
-    return records
+    return get_all_rows()
 
 class StudentData(BaseModel):
     timestamp: str | None = None
-    student_id: str
+    student_id: str | None = None
     student_name: str | None = None
     bank_name: str | None = None
     account_no: str | None = None
@@ -351,6 +194,7 @@ class StudentData(BaseModel):
     account_holder: str | None = None
     mother_name: str | None = None
     contact_mobile: str | None = None
+    student_mobile: str | None = None
     fee_cleared: str | None = None
     library_cleared: str | None = None
     scholarship_cleared: str | None = None
@@ -360,41 +204,45 @@ class StudentData(BaseModel):
     engaged: str | None = None
     security: str | None = None
     course: str | None = None
+    photo: str | None = None
 
 @app.post("/admin/student")
 def create_or_update_student(data: StudentData):
     sheet = get_sheet()
-    row_number = find_row_number(data.student_id)
+    student_id = data.student_id or ""
+    row_number = find_row_number(student_id)
     
-    print(f"DEBUG: updating student {data.student_id}. Row: {row_number}")
+    print(f"DEBUG: updating student {student_id}. Row: {row_number}")
     print(f"DEBUG: Data Received: {data.dict()}")
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     row = [
         timestamp,
-        data.student_id,
-        data.student_name,
-        data.bank_name,
-        data.account_no,
-        data.ifsc,
-        data.account_holder,
-        data.fee_cleared,
-        data.library_cleared,
-        data.scholarship_cleared,
-        data.registration_cleared,
-        data.status,
-        data.remark,
-        data.engaged,
-        data.security,
-        data.course,
-        data.contact_mobile,
-        data.mother_name
+        student_id,
+        data.student_name or "",
+        data.bank_name or "",
+        data.account_no or "",
+        data.ifsc or "",
+        data.account_holder or "",
+        data.fee_cleared or "NO",
+        data.library_cleared or "NO",
+        data.scholarship_cleared or "NO",
+        data.registration_cleared or "NO",
+        data.status or "PENDING",
+        data.remark or "",
+        data.engaged or "",
+        data.security or "",
+        data.course or "",
+        data.contact_mobile or "",
+        data.mother_name or "",
+        data.photo or "",
+        data.student_mobile or ""
     ]
 
     if row_number:
-        sheet.update(f"A{row_number}:R{row_number}", [row])
-
+        # A to T (20 columns)
+        sheet.update(f"A{row_number}:T{row_number}", [row])
         return {"message": "Student updated"}
     else:
         sheet.append_row(row)
@@ -407,18 +255,10 @@ def download_excel():
     if not records:
         raise HTTPException(status_code=400, detail="No data to export")
 
-    # Get excel mapping from local Excel
-    excel_map = get_excel_data_mapping()
-
     # Only include entries where status is APPROVED
     approved_records = []
     for r in records:
         if str(r.get("status", "")).upper() == "APPROVED":
-            sid = str(r.get("student_id", "")).strip()
-            if sid in excel_map:
-                for key, val in excel_map[sid].items():
-                    if not r.get(key):
-                        r[key] = val
             approved_records.append(r)
 
     if not approved_records:
@@ -427,20 +267,12 @@ def download_excel():
     df = pd.DataFrame(approved_records)
     
     # Clean up backend-only columns and duplicate manual columns
-    if 'Application Contact No' in df.columns:
-        df = df.drop(columns=['Application Contact No'])
-    if 'contact_mobile' in df.columns:
-        df = df.drop(columns=['contact_mobile'])
+    cols_to_drop = ['contact_mobile', 'mother_name', 'photo']
+    for col in cols_to_drop:
+        if col in df.columns:
+            df = df.drop(columns=[col])
 
-    # Remove 'student_mobile' (College Record Mobile No) as it's not needed
-    if 'student_mobile' in df.columns:
-        df = df.drop(columns=['student_mobile'])
-        
-    if 'mother_name' in df.columns:
-        df = df.drop(columns=['mother_name'])
-        
     # Rename the actual Google Sheet column 'student mobile no 2' to 'Application Contact No'
-    # We use a loop because pandas column matching needs to handle slight case/space differences
     for col in list(df.columns):
         clean_col = str(col).strip().lower()
         if clean_col == "student mobile no 2" or "mobile no 2" in clean_col:
@@ -449,7 +281,6 @@ def download_excel():
     
     file_name = "students.xlsx"
     df.to_excel(file_name, index=False)
-
 
     return FileResponse(
         file_name,
