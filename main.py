@@ -248,6 +248,47 @@ def create_or_update_student(data: StudentData):
         sheet.append_row(row)
         return {"message": "Student created"}
 
+# ================= VALIDATION =================
+@app.get("/validate-registration/{reg_no}")
+def validate_registration(reg_no: str):
+    try:
+        file_path = os.path.join(BASE_DIR, "New All Data.xlsx")
+        if not os.path.exists(file_path):
+            print(f"ERROR: Excel file not found at {file_path}")
+            raise HTTPException(status_code=500, detail="Validation database missing")
+            
+        df = pd.read_excel(file_path)
+        
+        # Normalize search input: string, stripped, lowercase
+        search_val = str(reg_no).strip().lower()
+        
+        def clean_series(series):
+            # Convert to string, strip, lowercase, and handle potential .0 from float conversion
+            return series.astype(str).str.strip().str.lower().str.replace(r'\.0$', '', regex=True)
+
+        is_valid = False
+        
+        # Priority 1: Check in 'Roll No.' (user specifically mentioned this)
+        if 'Roll No.' in df.columns:
+            if clean_series(df['Roll No.']).eq(search_val).any():
+                is_valid = True
+        
+        # Priority 2: Check in 'Registration No'
+        if not is_valid and 'Registration No' in df.columns:
+            if clean_series(df['Registration No']).eq(search_val).any():
+                is_valid = True
+                
+        if is_valid:
+            print(f"VALIDATION SUCCESS: {reg_no}")
+            return {"valid": True}
+        else:
+            print(f"VALIDATION FAILED: {reg_no}")
+            return {"valid": False, "message": "You are not applicable for the college security refund"}
+            
+    except Exception as e:
+        print(f"Error validating registration: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ================= DOWNLOAD =================
 @app.get("/admin/download")
 def download_excel():
