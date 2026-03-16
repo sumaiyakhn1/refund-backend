@@ -290,21 +290,30 @@ def validate_registration(reg_no: str):
 
 # ================= DOWNLOAD =================
 @app.get("/admin/download")
-def download_excel():
+def download_excel(type: str = "approved"):
     records = get_all_rows()
     if not records:
         raise HTTPException(status_code=400, detail="No data to export")
 
-    # Only include entries where status is APPROVED
-    approved_records = []
-    for r in records:
-        if str(r.get("status", "")).upper() == "APPROVED":
-            approved_records.append(r)
+    if type == "all":
+        export_records = records
+    elif type == "pending":
+        # Include entries where status is PENDING
+        export_records = []
+        for r in records:
+            if str(r.get("status", "")).upper() == "PENDING" or not str(r.get("status", "")):
+                export_records.append(r)
+    else:
+        # Only include entries where status is APPROVED
+        export_records = []
+        for r in records:
+            if str(r.get("status", "")).upper() == "APPROVED" or str(r.get("status", "")).upper() == "CLEARED":
+                export_records.append(r)
 
-    if not approved_records:
-        raise HTTPException(status_code=400, detail="No approved entries to export")
+    if not export_records:
+        raise HTTPException(status_code=400, detail="No entries to export")
 
-    df = pd.DataFrame(approved_records)
+    df = pd.DataFrame(export_records)
     
     # Clean up backend-only columns and duplicate manual columns
     cols_to_drop = ['contact_mobile', 'mother_name', 'photo']
