@@ -20,13 +20,12 @@ app.add_middleware(
 )
 
 # ================= ADMIN CONFIG =================
-# ================= ADMIN CONFIG =================
 ADMIN_ROLES = {
-    "super_admin": {"pass": "super@123", "permissions": "all"},  # Super Admin
-    "fee_admin":   {"pass": "fee@123",   "permissions": "fee_cleared"},
-    "lib_admin":   {"pass": "lib@123",   "permissions": "library_cleared"},
-    "schol_admin": {"pass": "schol@123", "permissions": "scholarship_cleared"},
-    "reg_admin":   {"pass": "reg@123",   "permissions": "registration_cleared"},
+    "super_admin": {"pass": "Rksd_Super!2026", "permissions": "all"},  # Super Admin
+    "fee_admin":   {"pass": "Rksd_Fee!2026",   "permissions": "fee_cleared"},
+    "lib_admin":   {"pass": "Rksd_Lib!2026",   "permissions": "library_cleared"},
+    "schol_admin": {"pass": "Rksd_Schol!2026", "permissions": "scholarship_cleared"},
+    "reg_admin":   {"pass": "Rksd_Reg!2026",   "permissions": "registration_cleared"},
 }
 
 # ================= PATH CONFIG =================
