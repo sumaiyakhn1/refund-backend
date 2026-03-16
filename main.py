@@ -85,7 +85,8 @@ def get_all_rows():
             'ifsc', 'account_holder', 'fee_cleared', 'library_cleared', 
             'scholarship_cleared', 'registration_cleared', 'status', 'remark', 
             'engaged', 'security', 'course', 'contact_mobile', 'mother_name', 
-            'photo', 'student_mobile'
+            'photo', 'student_mobile', 'fee_remark', 'lib_remark', 
+            'schol_remark', 'reg_remark'
         ]
         
         records = []
@@ -186,6 +187,10 @@ class StudentData(BaseModel):
     security: str | None = None
     course: str | None = None
     photo: str | None = None
+    fee_remark: str | None = None
+    lib_remark: str | None = None
+    schol_remark: str | None = None
+    reg_remark: str | None = None
     is_admin_update: bool = False
 
 @app.post("/admin/student")
@@ -220,7 +225,11 @@ def create_or_update_student(data: StudentData):
         data.contact_mobile or "",
         data.mother_name or "",
         data.photo or "",
-        data.student_mobile or ""
+        data.student_mobile or "",
+        data.fee_remark or "",
+        data.lib_remark or "",
+        data.schol_remark or "",
+        data.reg_remark or ""
     ]
 
     if row_number:
@@ -228,8 +237,8 @@ def create_or_update_student(data: StudentData):
              # If it's not an admin update but the record exists, it's a duplicate submission
              raise HTTPException(status_code=400, detail="Application already submitted for this roll number")
              
-        # A to T (20 columns)
-        sheet.update(f"A{row_number}:T{row_number}", [row])
+        # A to X (24 columns)
+        sheet.update(f"A{row_number}:X{row_number}", [row])
         return {"message": "Student updated"}
     else:
         sheet.append_row(row)
