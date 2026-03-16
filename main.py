@@ -67,26 +67,6 @@ class LoginRequest(BaseModel):
     password: str
     course: str | None = None  # Optional for admin, required for student
 
-class StudentData(BaseModel):
-    timestamp: str | None = None
-    student_id: str
-    student_name: str | None = None
-    bank_name: str | None = None
-    account_no: str | None = None
-    ifsc: str | None = None
-    account_holder: str | None = None
-    mother_name: str | None = None
-    student_mobile: str | None = None
-    contact_mobile: str | None = None
-    fee_cleared: str | None = None
-    library_cleared: str | None = None
-    scholarship_cleared: str | None = None
-    registration_cleared: str | None = None
-    status: str | None = None
-    remark: str | None = None
-    engaged: str | None = None
-    security: str | None = None
-    course: str | None = None
 
 
 
@@ -143,8 +123,10 @@ def get_all_rows():
 
 
 def find_row_number(student_id: str):
+    target_id = str(student_id).strip().lower()
     for idx, row in enumerate(get_all_rows()):
-        if str(row.get("student_id")) == str(student_id):
+        current_id = str(row.get("student_id") or "").strip().lower()
+        if current_id == target_id:
             return idx + 2
     return None
 
@@ -204,6 +186,7 @@ class StudentData(BaseModel):
     security: str | None = None
     course: str | None = None
     photo: str | None = None
+    is_admin_update: bool = False
 
 @app.post("/admin/student")
 def create_or_update_student(data: StudentData):
@@ -213,8 +196,9 @@ def create_or_update_student(data: StudentData):
     
     print(f"DEBUG: updating student {student_id}. Row: {row_number}")
     print(f"DEBUG: Data Received: {data.dict()}")
-
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Use existing timestamp if provided, otherwise generate new one
+    timestamp = data.timestamp if data.timestamp else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     row = [
         timestamp,
@@ -240,6 +224,10 @@ def create_or_update_student(data: StudentData):
     ]
 
     if row_number:
+        if not data.is_admin_update:
+             # If it's not an admin update but the record exists, it's a duplicate submission
+             raise HTTPException(status_code=400, detail="Application already submitted for this roll number")
+             
         # A to T (20 columns)
         sheet.update(f"A{row_number}:T{row_number}", [row])
         return {"message": "Student updated"}
